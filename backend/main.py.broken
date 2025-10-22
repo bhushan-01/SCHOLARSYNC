@@ -1,0 +1,445 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+import fitz  # PyMuPDF
+import chromadb
+from chromadb.utils import embedding_functions
+import ollama
+from typing import List, Dict, Optional
+import uuid
+import os
+import re
+from datetime import datetime
+from pathlib import Path
+
+app = FastAPI(title="AI Research Paper Assistant")
+
+# Enhanced CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Persistent ChromaDB
+CHROMA_PATH = "./chroma_db"
+Path(CHROMA_PATH).mkdir(exist_ok=True)
+chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
+
+sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"
+)
+
+# Store for active collections with metadata
+active_collections = {}
+
+# Configuration
+MAX_CHUNK_SIZE = 600
+CHUNK_OVERLAP = 100
+DEFAULT_MODEL = "llama3.2"
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Verify Ollama is running and model is available"""
+    try:
+        models = ollama.list()
+        print(f"✓ Ollama is running with {len(models.get('models', []))} models")
+        
+        # Check if default model exists
+        model_names = [m['name'] for m in models.get('models', [])]
+        if not any(DEFAULT_MODEL in name for name in model_names):
+            print(f"⚠️  Model '{DEFAULT_MODEL}' not found. Pull it with: ollama pull {DEFAULT_MODEL}")
+        else:
+            print(f"✓ Model '{DEFAULT_MODEL}' is ready")
+    except Exception as e:
+        print(f"⚠️  WARNING: Ollama connection failed: {e}")
+        print("   Make sure Ollama is running (it should already be running)")
+
+
+def smart_chunk_text(text: str, page_num: int) -> List[Dict]:
+    """Enhanced chunking with overlap and better segmentation"""
+    # Split by sentences first
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+    chunks = []
+    current_chunk = []
+    current_length = 0
+    
+    for sentence in sentences:
+        sentence_length = len(sentence.split())
+        
+        if current_length + sentence_length > MAX_CHUNK_SIZE and current_chunk:
+            # Save current chunk
+            chunk_text = ' '.join(current_chunk)
+            if len(chunk_text.strip()) > 50:
+                chunks.append({
+                    'text': chunk_text.strip(),
+                    'page': page_num,
+                    'id': str(uuid.uuid4())
+                })
+            
+            # Start new chunk with overlap
+            overlap_sentences = current_chunk[-2:] if len(current_chunk) >= 2 else current_chunk
+            current_chunk = overlap_sentences + [sentence]
+            current_length = sum(len(s.split()) for s in current_chunk)
+        else:
+            current_chunk.append(sentence)
+            current_length += sentence_length
+    
+    # Add final chunk
+    if current_chunk:
+        chunk_text = ' '.join(current_chunk)
+        if len(chunk_text.strip()) > 50:
+            chunks.append({
+                'text': chunk_text.strip(),
+                'page': page_num,
+                'id': str(uuid.uuid4())
+            })
+    
+    return chunks
+
+
+def extract_text_from_pdf(pdf_path: str) -> Dict:
+    """Extract text with enhanced metadata"""
+    doc = fitz.open(pdf_path)
+    chunks = []
+    metadata = {
+        'total_pages': len(doc),
+        'title': doc.metadata.get('title', 'Unknown'),
+        'author': doc.metadata.get('author', 'Unknown'),
+    }
+    
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        text = page.get_text()
+        
+        # Smart chunking
+        page_chunks = smart_chunk_text(text, page_num + 1)
+        chunks.extend(page_chunks)
+    
+    doc.close()
+    
+    return {
+        'chunks': chunks,
+        'metadata': metadata
+    }
+
+
+def create_vector_db(chunks: List[Dict], collection_name: str):
+    """Create or update vector database"""
+    try:
+        # Delete if exists
+        try:
+            chroma_client.delete_collection(collection_name)
+        except:
+            pass
+        
+        collection = chroma_client.create_collection(
+            name=collection_name,
+            embedding_function=sentence_transformer_ef,
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        # Batch add for efficiency
+        batch_size = 100
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i:i + batch_size]
+            collection.add(
+                documents=[chunk['text'] for chunk in batch],
+                metadatas=[{'page': chunk['page']} for chunk in batch],
+                ids=[chunk['id'] for chunk in batch]
+            )
+        
+        return collection
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vector DB error: {str(e)}")
+
+
+def retrieve_relevant_chunks(collection, query: str, n_results: int = 7):
+    """Enhanced retrieval with diversity"""
+    results = collection.query(
+        query_texts=[query],
+        n_results=n_results
+    )
+    
+    retrieved = []
+    
+    for i, doc in enumerate(results['documents'][0]):
+        page = results['metadatas'][0][i]['page']
+        retrieved.append({
+            'text': doc,
+            'page': page,
+            'relevance_score': 1.0 - (i * 0.1)
+        })
+    
+    return retrieved
+
+
+def generate_summary_with_citations(chunks: List[Dict], query: str = None) -> Dict:
+    """Enhanced summary generation with better prompting"""
+    
+    context = "\n\n".join([
+        f"[Page {chunk['page']}]: {chunk['text']}" 
+        for chunk in chunks
+    ])
+    
+    if query:
+        prompt = f"""You are a research assistant analyzing academic papers. Based on the excerpts below, provide a clear, accurate answer to the question.
+
+Question: {query}
+
+Context from paper:
+{context}
+
+Instructions:
+1. Answer the question directly and concisely
+2. Cite specific pages using [Page X] format after each claim
+3. If information is insufficient, state that clearly
+4. Focus on factual information from the text
+
+Answer:"""
+    else:
+        prompt = f"""You are a research assistant. Summarize this research paper based on the excerpts provided.
+
+Context from paper:
+{context}
+
+Provide a structured summary covering:
+1. **Main Objective**: What problem does this paper address?
+2. **Methodology**: What approach did the researchers use?
+3. **Key Findings**: What are the main results or contributions?
+
+Important:
+- Cite specific pages using [Page X] after each claim
+- Be concise but comprehensive
+- Use clear, academic language
+
+Summary:"""
+    
+    try:
+        response = ollama.chat(
+            model=DEFAULT_MODEL,
+            messages=[{'role': 'user', 'content': prompt}],
+            stream=False
+        )
+        
+        summary = response['message']['content']
+        
+        # Extract citations
+        citations = re.findall(r'\[Page (\d+)\]', summary)
+        unique_pages = sorted(list(set([int(p) for p in citations])))
+        
+        # Calculate confidence score based on multiple factors
+        sentences = [s for s in summary.split('.') if s.strip()]
+        citation_density = len(citations) / len(sentences) if sentences else 0
+        
+        # Factor 1: Citation density (ideal: 0.3-0.7)
+        density_score = min(1.0, citation_density / 0.5)
+        
+        # Factor 2: Unique page coverage
+        coverage_score = min(1.0, len(unique_pages) / 5)
+        
+        # Factor 3: Response length (not too short, not too long)
+        word_count = len(summary.split())
+        length_score = 1.0 if 100 < word_count < 600 else 0.7
+        
+        # Combined confidence score
+        confidence = (density_score * 0.5 + coverage_score * 0.3 + length_score * 0.2)
+        confidence = max(0.3, min(1.0, confidence))  # Clamp between 0.3 and 1.0
+        
+        return {
+            'summary': summary,
+            'cited_pages': unique_pages,
+            'chunks_used': len(chunks),
+            'confidence_score': round(confidence, 2),
+            'metadata': {
+                'word_count': word_count,
+                'citation_count': len(citations),
+                'unique_citations': len(unique_pages),
+                'citation_density': round(citation_density, 2)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
+
+
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    """Upload and process PDF with enhanced error handling"""
+    
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    
+    # Check file size
+    content = await file.read()
+    file_size = len(content)
+    
+    if file_size > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+    
+    # Save temporarily
+    file_path = f"/tmp/{uuid.uuid4().hex}_{file.filename}"
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    try:
+        # Extract text
+        extraction_result = extract_text_from_pdf(file_path)
+        chunks = extraction_result['chunks']
+        metadata = extraction_result['metadata']
+        
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No text could be extracted from PDF")
+        
+        # Create collection
+        collection_name = f"doc_{uuid.uuid4().hex[:12]}"
+        collection = create_vector_db(chunks, collection_name)
+        
+        # Store metadata
+        active_collections[collection_name] = {
+            'collection': collection,
+            'filename': file.filename,
+            'upload_time': datetime.now().isoformat(),
+            'metadata': metadata,
+            'total_chunks': len(chunks)
+        }
+        
+        # Cleanup
+        os.remove(file_path)
+        
+        return {
+            'collection_id': collection_name,
+            'total_chunks': len(chunks),
+            'filename': file.filename,
+            'paper_metadata': metadata
+        }
+    
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/summarize/{collection_id}")
+async def summarize_paper(collection_id: str):
+    """Generate comprehensive summary"""
+    if collection_id not in active_collections:
+        raise HTTPException(status_code=404, detail="Collection not found. Please upload PDF first.")
+    
+    collection = active_collections[collection_id]['collection']
+    
+    # Get diverse chunks from entire paper
+    all_results = collection.get()
+    total_chunks = len(all_results['ids'])
+    
+    # Sample strategically: intro, middle sections, conclusion
+    indices = [
+        0,  # Introduction
+        total_chunks // 4,  # Early content
+        total_chunks // 2,  # Middle
+        3 * total_chunks // 4,  # Later content
+        total_chunks - 1  # Conclusion
+    ]
+    
+    sample_chunks = []
+    for idx in indices:
+        if idx < total_chunks:
+            sample_chunks.append({
+                'text': all_results['documents'][idx],
+                'page': all_results['metadatas'][idx]['page']
+            })
+    
+    result = generate_summary_with_citations(sample_chunks)
+    return result
+
+
+@app.post("/query/{collection_id}")
+async def query_paper(collection_id: str, query_data: dict):
+    """Answer specific questions with enhanced retrieval"""
+    if collection_id not in active_collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    collection = active_collections[collection_id]['collection']
+    question = query_data.get('question', '').strip()
+    
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+    
+    # Enhanced retrieval
+    relevant_chunks = retrieve_relevant_chunks(collection, question, n_results=7)
+    
+    # Generate answer
+    result = generate_summary_with_citations(relevant_chunks, query=question)
+    return result
+
+
+@app.get("/collections")
+async def list_collections():
+    """List all active collections"""
+    return {
+        'collections': [
+            {
+                'id': coll_id,
+                'filename': data['filename'],
+                'upload_time': data['upload_time'],
+                'total_chunks': data['total_chunks']
+            }
+            for coll_id, data in active_collections.items()
+        ]
+    }
+
+
+@app.delete("/collection/{collection_id}")
+async def delete_collection(collection_id: str):
+    """Delete a collection and free resources"""
+    if collection_id not in active_collections:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    try:
+        chroma_client.delete_collection(collection_id)
+        del active_collections[collection_id]
+        return {"message": "Collection deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health_check():
+    """Enhanced health check"""
+    try:
+        ollama_status = "running"
+        try:
+            ollama.list()
+        except:
+            ollama_status = "unavailable"
+        
+        return {
+            "status": "healthy",
+            "message": "AI Research Assistant API",
+            "ollama_status": ollama_status,
+            "active_collections": len(active_collections),
+            "model": DEFAULT_MODEL
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("=" * 60)
+    print("🚀 Starting AI Research Paper Assistant API")
+    print("=" * 60)
+    print(f"📦 Model: {DEFAULT_MODEL}")
+    print(f"🗄️  Database: {CHROMA_PATH}")
+    print(f"🌐 CORS: Enabled for localhost:5173, 5174")
+    print("=" * 60)
+    print("\n💡 Make sure Ollama is running!")
+    print("   (Don't worry about 'address in use' - it means it's already running)\n")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
