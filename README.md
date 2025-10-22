@@ -8,6 +8,40 @@ A fully local retrieval-augmented generation (RAG) system for academic literatur
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![React](https://img.shields.io/badge/React-18-blue)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![Last Commit](https://img.shields.io/github/last-commit/bhushan-01/SCHOLARSYNC)
+![Stars](https://img.shields.io/github/stars/bhushan-01/SCHOLARSYNC)
+
+---
+
+## ⚡ Quick Start (5 minutes)
+
+```bash
+# 1. Install Ollama and pull model
+ollama pull llama3.2
+
+# 2. Clone and setup
+git clone https://github.com/bhushan-01/SCHOLARSYNC.git
+cd SCHOLARSYNC/ai_research_assistant/backend
+
+# 3. Backend setup
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+cd SCHOLARSYNC/ai_research_assistant/frontend
+
+# 4. Frontend setup
+npm install
+
+# 5. Run (in 2 terminals)
+# Terminal 1:
+python main.py
+
+# Terminal 2:
+npm run dev
+```
+
+**Open http://localhost:5173 🎉**
 
 ---
 
@@ -20,6 +54,21 @@ A fully local retrieval-augmented generation (RAG) system for academic literatur
 - ✅ **Zero API Costs**: Fully local deployment with Ollama + Llama 3.2
 - ✅ **Interactive Web Interface**: Modern React UI with dark/light modes
 - ✅ **Privacy-First**: All processing happens on your machine
+
+---
+
+## 📸 Screenshots & Demo
+
+### Upload Interface
+Upload and process multiple research papers with automatic quality scoring.
+
+### Paper Analysis
+View quality metrics, generate summaries, and ask questions with precise citations.
+
+### Multi-Paper Comparison
+Compare methodologies, findings, and identify research gaps across multiple papers.
+
+**📹 Video Demo:** [Watch Demo](https://youtu.be/60a7KHB65q0)
 
 ---
 
@@ -89,6 +138,29 @@ A fully local retrieval-augmented generation (RAG) system for academic literatur
 - **OS**: macOS, Linux, or Windows 10/11
 - **Internet**: Required only for initial setup and model download
 
+### ✅ Verify Prerequisites
+
+```bash
+# Check Python version
+python3 --version  # Should be 3.10+
+
+# Check Node version
+node --version     # Should be 18+
+
+# Check npm version
+npm --version      # Should be 9+
+```
+
+---
+
+## ⏱️ Installation Time
+
+- **Total time:** 15-25 minutes
+- Ollama model download: 5-10 minutes (4.7GB)
+- Python dependencies: 2-5 minutes
+- Frontend dependencies: 1-3 minutes
+- First-time setup: 5-7 minutes
+
 ---
 
 ## 🚀 Installation
@@ -112,7 +184,7 @@ ollama pull llama3.2
 ollama pull llama3.2
 ```
 
-**Verify Ollama installation:**
+**✅ Verify Ollama installation:**
 ```bash
 # Check Ollama is running
 ollama list
@@ -128,21 +200,19 @@ ollama run llama3.2 "Hello, test"
 
 ---
 
-### Step 2: Clone/Download the Project
+### Step 2: Clone the Project
 
-
-** If you received a .zip file:**
 ```bash
-# Extract the zip file
-unzip ai-research-assistant.zip
-cd ai-research-assistant
+# Clone from GitHub
+git clone https://github.com/bhushan-01/SCHOLARSYNC.git
+cd SCHOLARSYNC
 ```
 
-**Verify project structure:**
+**✅ Verify project structure:**
 ```bash
 ls -la
 # You should see:
-# main.py, requirements.txt, package.json, App.jsx, etc.
+# main.py, requirements.txt, package.json, src/, etc.
 ```
 
 ---
@@ -184,7 +254,7 @@ pip install -r requirements.txt
 # Expected installation time: 2-5 minutes
 ```
 
-**Verify Python installation:**
+**✅ Verify Python installation:**
 ```bash
 # Check installed packages
 pip list
@@ -210,7 +280,7 @@ npm install
 # You'll see a lot of packages being installed - this is normal
 ```
 
-**Verify frontend installation:**
+**✅ Verify frontend installation:**
 ```bash
 # Check installed packages
 npm list --depth=0
@@ -238,7 +308,27 @@ ls -la
 
 ---
 
-## ▶️ Running ai-research-assistant
+### Step 6: Environment Configuration (Optional)
+
+Create a `.env` file if you need custom settings:
+
+```bash
+# Create .env file
+nano .env
+```
+
+Add your custom configuration:
+```bash
+# .env
+CHROMA_PATH=./chroma_db
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=52428800
+OLLAMA_MODEL=llama3.2
+```
+
+---
+
+## ▶️ Running ScholarSync
 
 ### Quick Start (Two Terminals Required)
 
@@ -246,7 +336,7 @@ ls -la
 
 ```bash
 # Navigate to project directory
-cd /path/to/ai-research-assistant
+cd /path/to/SCHOLARSYNC
 
 # Activate virtual environment (if not already active)
 source venv/bin/activate  # macOS/Linux
@@ -290,7 +380,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 
 ```bash
 # Navigate to project directory
-cd /path/to/ai-research-assistant
+cd /path/to/SCHOLARSYNC
 
 # Start Vite development server
 npm run dev
@@ -324,7 +414,7 @@ npm run preview
 
 ---
 
-## 🎯 Using ai-research-assistant
+## 🎯 Using ScholarSync
 
 ### 1. Upload Papers
 
@@ -480,6 +570,18 @@ Based on typical hardware (8GB RAM, 4-core CPU):
 
 ---
 
+## ⚠️ Known Limitations
+
+- **File size:** Maximum 50MB per PDF
+- **Memory:** Requires 8GB RAM minimum (16GB recommended)
+- **Papers:** Compare up to 5 papers maximum
+- **Languages:** English papers work best
+- **Format:** PDF only (no Word, LaTeX, etc.)
+- **Scanned PDFs:** Text must be extractable (OCR not included)
+- **Internet:** Required for initial setup; works offline after
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Issue: "Ollama check failed"
@@ -572,10 +674,65 @@ npm install
 
 ---
 
+### Issue: "Permission denied" when pushing to GitHub
+
+**Solution:**
+```bash
+# If using HTTPS, switch to SSH
+git remote set-url origin git@github.com:bhushan-01/SCHOLARSYNC.git
+
+# Generate SSH key if needed
+ssh-keygen -t ed25519 -C "your-email@example.com"
+
+# Add key to ssh-agent
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# Copy public key and add to GitHub
+cat ~/.ssh/id_ed25519.pub
+# Go to GitHub Settings > SSH Keys > Add new key
+
+# Test connection
+ssh -T git@github.com
+```
+
+---
+
+## ❓ FAQ
+
+**Q: Can I use GPT-4 or other models instead of Llama?**  
+A: Yes! Install any Ollama-compatible model and change `DEFAULT_MODEL` in main.py. Popular alternatives: `mistral`, `codellama`, `mixtral`.
+
+**Q: Does this work offline?**  
+A: Yes, after initial setup and model download, ScholarSync works completely offline.
+
+**Q: Can I deploy this to a server?**  
+A: Yes! Update CORS settings in main.py and change `localhost` to your server IP or domain.
+
+**Q: What paper formats are supported?**  
+A: Currently only PDF with extractable text. Scanned PDFs (images) require OCR preprocessing.
+
+**Q: How accurate are the citations?**  
+A: Citations have ≥95% accuracy based on evaluation tests. All claims are grounded in retrieved chunks.
+
+**Q: Can I process non-English papers?**  
+A: Llama 3.2 supports multiple languages, but results are best with English papers.
+
+**Q: Is my data private?**  
+A: Yes! Everything runs locally. No data is sent to external servers. Your papers never leave your computer.
+
+**Q: How much does this cost?**  
+A: Zero! All components are open-source and free. No API fees.
+
+**Q: Can I customize the summarization format?**  
+A: Yes! Edit the prompts in main.py (search for "system_message" variables).
+
+---
+
 ## 📁 Project Structure
 
 ```
-ai-research-assistant/
+SCHOLARSYNC/
 ├── main.py                 # FastAPI backend (530 lines)
 ├── requirements.txt        # Python dependencies
 ├── package.json            # Node dependencies
@@ -593,6 +750,9 @@ ai-research-assistant/
 ├── evaluate.py            # Evaluation framework
 ├── test_system.py         # System test suite
 │
+├── .gitignore             # Git ignore rules
+├── .env                   # Environment variables (optional)
+│
 └── README.md              # This file
 ```
 
@@ -600,7 +760,7 @@ ai-research-assistant/
 
 ## 🔒 Privacy & Security
 
-**ai-research-assistant is 100% local and private:**
+**ScholarSync is 100% local and private:**
 
 ✅ **No external API calls** - All processing happens on your machine  
 ✅ **No data collection** - Your papers never leave your computer  
@@ -613,14 +773,20 @@ ai-research-assistant/
 - Vectors stored locally in `./chroma_db/`
 - No cloud, no servers, no external services
 
+**Security best practices:**
+- Keep dependencies updated: `pip install --upgrade -r requirements.txt`
+- Don't commit `.env` files with sensitive data
+- Use virtual environments to isolate dependencies
+- Review code before running: `cat main.py`
+
 ---
 
 ## 🆘 Getting Help
 
 ### Documentation
-- **Video Demo**: [Link to your video]
-- **Technical Paper**: See `ai-research-assistant_Paper.pdf`
+- **GitHub Repository**: https://github.com/bhushan-01/SCHOLARSYNC
 - **API Documentation**: http://localhost:8000/docs (when backend is running)
+- **Issues**: Report bugs at https://github.com/bhushan-01/SCHOLARSYNC/issues
 
 ### Common Commands Reference
 
@@ -640,20 +806,36 @@ ollama list
 # View logs
 # Backend logs appear in Terminal 1
 # Frontend logs appear in Terminal 2 and browser console (F12)
+
+# Activate virtual environment
+source venv/bin/activate  # macOS/Linux
+venv\Scripts\activate     # Windows
+
+# Deactivate virtual environment
+deactivate
+
+# Update dependencies
+pip install --upgrade -r requirements.txt
+npm update
+
+# Clean restart
+rm -rf chroma_db uploads
+python main.py
 ```
 
 ---
 
 ## 📝 Citation
 
-If you use ai-research-assistant in your research, please cite:
+If you use ScholarSync in your research, please cite:
 
 ```bibtex
-@software{ai-research-assistant2025,
+@software{scholarsync2025,
   author = {Kakade, Bhushan Sunil},
-  title = {ai-research-assistant: Local RAG System for Academic Literature Review},
+  title = {ScholarSync: Local RAG System for Academic Literature Review},
   year = {2025},
-  url = {https://github.com/yourusername/ai-research-assistant}
+  url = {https://github.com/bhushan-01/SCHOLARSYNC},
+  note = {AI Research Paper Assistant with Multi-Paper Comparison}
 }
 ```
 
@@ -681,22 +863,29 @@ MIT License - See LICENSE file for details
 ## 📧 Contact
 
 **Author:** Bhushan Sunil Kakade  
-**Email:** bkakade@gmu.edu  
-**Course:** CS-690-007 (Fall 2025)
+**Email:** bhushansunilkakade@gmail.com  
+**GitHub:** [@bhushan-01](https://github.com/bhushan-01)  
+**Institution:** George Mason University  
+
 
 ---
 
 ## 🎉 You're Ready!
 
-ai-research-assistant is now set up and ready to use. Enjoy analyzing research papers!
+ScholarSync is now set up and ready to use. Enjoy analyzing research papers!
 
 **Quick Start Checklist:**
 - [ ] Ollama installed and `llama3.2` model pulled
+- [ ] Repository cloned from GitHub
+- [ ] Python virtual environment created and activated
 - [ ] Python dependencies installed (`pip install -r requirements.txt`)
 - [ ] Frontend dependencies installed (`npm install`)
 - [ ] Backend running (Terminal 1: `python main.py`)
 - [ ] Frontend running (Terminal 2: `npm run dev`)
 - [ ] Browser open to http://localhost:5173
+- [ ] Green "System Online" badge visible
 - [ ] Test with a sample PDF
+
+**Need help?** Open an issue on GitHub or email me!
 
 **Happy researching! 📚🚀**
